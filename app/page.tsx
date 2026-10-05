@@ -1,69 +1,229 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import { supabase } from "@/lib/supabase";
+
+interface PhotoUploadProps {
+  eventId: number;
+  onUploadSuccess: () => void;
+}
+
+export default function PhotoUpload({
+  eventId,
+  onUploadSuccess,
+}: PhotoUploadProps) {
+  const [guestName, setGuestName] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [success, setSuccess] = useState("");
+  const [error, setError] = useState("");
+
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    setError("");
+    setSuccess("");
+
+    const files = Array.from(e.target.files || []);
+
+    if (files.length > 4) {
+      setError("You can upload a maximum of 4 photos.");
+      return;
+    }
+
+    setSelectedFiles(files);
+  };
+
+  const handleUpload = async () => {
+    setError("");
+    setSuccess("");
+
+    if (!guestName.trim()) {
+      setError("Please enter your name.");
+      return;
+    }
+
+    if (selectedFiles.length === 0) {
+      setError("Please select at least one photo.");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      for (const file of selectedFiles) {
+        const fileExtension =
+          file.name.split(".").pop() || "jpg";
+
+        const fileName = `${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2)}.${fileExtension}`;
+
+        const filePath = `${eventId}/${fileName}`;
+
+        // Upload image to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from("wedding-thankyou")
+          .upload(filePath, file);
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        // Get public URL
+        const { data: publicUrlData } = supabase.storage
+          .from("wedding-thankyou")
+          .getPublicUrl(filePath);
+
+        const imageUrl = publicUrlData.publicUrl;
+
+        // Save image information to database
+        const { error: insertError } = await supabase
+          .from("wedding_thankyou")
+          .insert({
+            event_id: eventId,
+            upload_by: guestName.trim(),
+            guest_image_url: imageUrl,
+          });
+
+        if (insertError) {
+          throw insertError;
+        }
+      }
+
+      // Tell GuestPhotoGallery to refresh
+      onUploadSuccess();
+
+      setSelectedFiles([]);
+      setGuestName("");
+
+      setSuccess(
+        "Your photos have been shared successfully! ❤️"
+      );
+
+    } catch (err) {
+      console.error("Photo upload error:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong while uploading your photos."
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <section className="bg-[#dcecf2] px-5 py-16">
+      <div className="mx-auto w-full max-w-[520px]">
+
+        {/* Heading */}
+        <div className="text-center">
+          <div className="mb-4 flex items-center justify-center gap-3">
+            <span className="h-px w-10 bg-[#d6b56d]" />
+            <span className="text-[#d6b56d]">✦</span>
+            <span className="h-px w-10 bg-[#d6b56d]" />
+          </div>
+
+          <p className="text-xs uppercase tracking-[0.3em] text-[#b29452]">
+            Share Your Moments
+          </p>
+
+          <h2 className="mt-3 font-serif text-4xl font-light text-[#30434b]">
+            Add Your Photos
+          </h2>
+
+          <p className="mx-auto mt-4 max-w-md font-serif text-base leading-7 text-[#5d6d73]">
+            Share up to 4 beautiful moments from our special day.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+
+        {/* Upload Card */}
+        <div className="mt-8 rounded-3xl bg-white/80 p-6 shadow-lg backdrop-blur-sm">
+
+          {/* Guest Name */}
+          <label className="block">
+            <span className="font-serif text-sm text-[#30434b]">
+              Your Name
+            </span>
+
+            <input
+              type="text"
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              placeholder="Enter your name"
+              className="mt-2 w-full rounded-xl border border-[#d6b56d]/40 bg-[#fdfcf8] px-4 py-3 text-sm text-[#30434b] outline-none transition focus:border-[#d6b56d]"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </label>
+
+          {/* File Input */}
+          <label className="mt-5 block">
+            <span className="font-serif text-sm text-[#30434b]">
+              Select Photos
+            </span>
+
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileChange}
+              className="mt-2 block w-full cursor-pointer rounded-xl border border-[#d6b56d]/40 bg-[#fdfcf8] p-3 text-sm text-[#30434b]"
+            />
+
+            <span className="mt-2 block text-xs text-[#7a888d]">
+              Maximum 4 photos
+            </span>
+          </label>
+
+          {/* Selected Photos Preview */}
+          {selectedFiles.length > 0 && (
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              {selectedFiles.map((file, index) => (
+                <div
+                  key={`${file.name}-${index}`}
+                  className="overflow-hidden rounded-xl border border-[#d6b56d]/30 bg-[#fdfcf8]"
+                >
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt={`Selected photo ${index + 1}`}
+                    className="aspect-square w-full object-cover"
+                  />
+
+                  <p className="truncate px-2 py-2 text-xs text-[#5d6d73]">
+                    {file.name}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-center text-sm text-red-600">
+              {error}
+            </div>
+          )}
+
+          {/* Success */}
+          {success && (
+            <div className="mt-5 rounded-xl bg-green-50 px-4 py-3 text-center text-sm text-green-700">
+              {success}
+            </div>
+          )}
+
+          {/* Upload Button */}
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={uploading}
+            className="mt-6 w-full rounded-full bg-[#30434b] px-6 py-3.5 font-serif text-sm tracking-wide text-white transition hover:bg-[#405861] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Documentation
-          </a>
+            {uploading ? "Uploading..." : "Share My Photos ♡"}
+          </button>
+
         </div>
-      </main>
-    </div>
+      </div>
+    </section>
   );
 }
